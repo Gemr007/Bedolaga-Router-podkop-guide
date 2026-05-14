@@ -2,20 +2,14 @@
 
 Вместо стандартной страницы установки пользователи с роутерным тарифом видят свои VLESS-ключи и инструкцию по настройке [Podkop](https://github.com/itdoginfo/podkop) на OpenWRT.
 
-## Результат
-
-- Список VLESS-ключей по серверам с кнопкой "Копировать"
-- Пошаговая инструкция по Podkop
-- Ссылка на документацию
-
 ---
 
 ## Установка
 
-### 1. Добавь эндпоинт в бот
+### Шаг 1. Добавь эндпоинт в бот
 
 ```bash
-cat >> remnawave-bedolaga-telegram-bot/app/cabinet/routes/subscription.py << 'EOF'
+cat >> ~/remnawave-bedolaga-telegram-bot/app/cabinet/routes/subscription.py << 'EOF'
 
 
 import base64
@@ -52,19 +46,40 @@ EOF
 Перезапусти бота:
 
 ```bash
-cd remnawave-bedolaga-telegram-bot
+cd ~/remnawave-bedolaga-telegram-bot
 make reload
 ```
 
 ---
 
+### Шаг 2. Установи файлы компонентов
+
+#### Вариант А — скачать с GitHub
+
+```bash
+cd ~/remnawave-bedolaga-telegram-bot/bedolaga-cabinet/src
+
+curl -o components/connection/PodkopGuide.tsx \
+  https://raw.githubusercontent.com/Gemr007/Bedolaga-Router-podkop-guide/main/PodkopGuide.tsx
+
+curl -o pages/Connection.tsx \
+  https://raw.githubusercontent.com/Gemr007/Bedolaga-Router-podkop-guide/main/Connection.tsx
+```
+
+Проверь:
+
+```bash
+ls components/connection/PodkopGuide.tsx pages/Connection.tsx
+```
 
 ---
 
-### 2. Создай компонент PodkopGuide
+#### Вариант Б — собрать вручную
+
+**2.1. Создай компонент PodkopGuide**
 
 ```bash
-cat > bedolaga-cabinet/src/components/connection/PodkopGuide.tsx << 'EOF'
+cat > ~/remnawave-bedolaga-telegram-bot/bedolaga-cabinet/src/components/connection/PodkopGuide.tsx << 'EOF'
 import { useState, useCallback, useEffect } from 'react';
 import apiClient from '../../api/client';
 
@@ -246,51 +261,44 @@ export default function PodkopGuide({ subscriptionUrl, subscriptionId, onGoBack,
 EOF
 ```
 
----
-
-### 3. Модифицируй Connection.tsx
-
-Добавь импорт (после существующих импортов):
-
-```bash
-sed -i "s|import InstallationGuide from '../components/connection/InstallationGuide';|import InstallationGuide from '../components/connection/InstallationGuide';\nimport PodkopGuide from '../components/connection/PodkopGuide';|" \
-  bedolaga-cabinet/src/pages/Connection.tsx
-```
-
-Добавь функцию определения тарифа и запрос подписки — найди строку с `useQuery` для `connectionLink` и добавь после неё:
+**2.2. Модифицируй Connection.tsx**
 
 ```bash
 python3 << 'PYEOF'
-with open('bedolaga-cabinet/src/pages/Connection.tsx', 'r') as f:
+with open('/root/remnawave-bedolaga-telegram-bot/bedolaga-cabinet/src/pages/Connection.tsx', 'r') as f:
     content = f.read()
 
-# Add helper function before the component
-helper = '''
+# Add PodkopGuide import
+content = content.replace(
+    "import InstallationGuide from '../components/connection/InstallationGuide';",
+    "import InstallationGuide from '../components/connection/InstallationGuide';\nimport PodkopGuide from '../components/connection/PodkopGuide';"
+)
+
+# Add helper function before component
+helper = """
 function isRouterTariff(name?: string | null): boolean {
-  return /router|роутер|openwrt|podkop/i.test(name || '');
+  return /router|\u0440\u043e\u0443\u0442\u0435\u0440|openwrt|podkop/i.test(name || '');
 }
 
-'''
+"""
 content = content.replace('export default function Connection()', helper + 'export default function Connection()')
 
-# Add subscription query after connectionLink query
-subscription_query = '''
+# Add subscription query
+subscription_query = """
   const { data: subscriptionStatus } = useQuery({
     queryKey: ['subscription', subId],
     queryFn: () => subscriptionApi.getSubscription(subId),
     staleTime: 30_000,
   });
   const routerTariff = isRouterTariff(subscriptionStatus?.subscription?.tariff_name);
-'''
-
-# Insert before the qrConnectionUrl useMemo
+"""
 content = content.replace(
     '  const qrConnectionUrl = useMemo(',
     subscription_query + '  const qrConnectionUrl = useMemo('
 )
 
-# Add PodkopGuide render before the loading check
-podkop_render = '''  if (routerTariff) {
+# Add PodkopGuide render
+podkop_render = """  if (routerTariff) {
     return (
       <PodkopGuide
         subscriptionUrl={connectionLink?.subscription_url ?? appConfig?.subscriptionUrl ?? null}
@@ -301,13 +309,13 @@ podkop_render = '''  if (routerTariff) {
     );
   }
 
-'''
+"""
 content = content.replace(
     '  if (isLoading || isConnectionLinkLoading)',
     podkop_render + '  if (isLoading || isConnectionLinkLoading)'
 )
 
-with open('bedolaga-cabinet/src/pages/Connection.tsx', 'w') as f:
+with open('/root/remnawave-bedolaga-telegram-bot/bedolaga-cabinet/src/pages/Connection.tsx', 'w') as f:
     f.write(content)
 print("Done")
 PYEOF
@@ -315,19 +323,20 @@ PYEOF
 
 ---
 
-### 4. Собери и задеплой cabinet
+### Шаг 3. Пересобери cabinet
 
 ```bash
-cd bedolaga-cabinet
+cd ~/remnawave-bedolaga-telegram-bot/bedolaga-cabinet
 docker compose -f docker-compose.local.yml build --no-cache
 docker compose -f docker-compose.local.yml up -d --force-recreate
 ```
 
 ---
 
-### 5. Создай тариф в админке
+### Шаг 4. Создай тариф в админке
 
 В панели администратора бота создай тариф с именем содержащим одно из слов:
+
 - `Router` / `router`
 - `Роутер` / `роутер`
 - `OpenWRT` / `openwrt`
@@ -339,8 +348,8 @@ docker compose -f docker-compose.local.yml up -d --force-recreate
 
 ## Как это работает
 
-1. При открытии страницы установки `Connection.tsx` делает запрос к `/cabinet/subscription` и проверяет `tariff_name`
-2. Если имя тарифа совпадает с регексом — рендерит `PodkopGuide` вместо стандартного `InstallationGuide`
+1. При открытии страницы установки `Connection.tsx` проверяет `tariff_name` подписки
+2. Если имя тарифа совпадает — рендерит `PodkopGuide` вместо стандартного `InstallationGuide`
 3. `PodkopGuide` запрашивает `/cabinet/subscription/vless-keys` через авторизованный `apiClient`
-4. Бот fetches subscription URL из Remnawave, декодирует base64, возвращает список VLESS-ключей
-5. Пользователь видит ключи по серверам с кнопкой копирования
+4. Бот получает `subscription_url` из БД, делает запрос к Remnawave, декодирует base64 и возвращает список VLESS-ключей
+5. Пользователь видит ключи по серверам с кнопкой "Копировать" и инструкцию по Podkop
