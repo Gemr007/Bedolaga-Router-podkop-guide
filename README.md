@@ -2,7 +2,7 @@
 
 Вместо стандартной страницы установки пользователи с роутерным тарифом видят свои VLESS-ключи и инструкцию по настройке [Podkop](https://github.com/itdoginfo/podkop) на OpenWRT.
 
-![Пример](https://github.com/Gemr007/Bedolaga-Router-podkop-guide/blob/main/Example.png?raw=true)
+![Пример](Example.png)
 
 ---
 
